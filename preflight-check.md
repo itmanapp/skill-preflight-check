@@ -11,7 +11,7 @@ description: Check official docs and changelogs before coding tasks.
 **觸發時機**：使用者訊息提到具體的套件名稱、SDK、雲端服務或框架時（例如「幫我升級 Next.js」「串接 Stripe API」「修這段 Terraform 設定」「用 LangChain 串起來」），即使沒有明確要求檢查版本，也應該主動觸發。同一次對話中已經查過的工具不用重複查。
 
 ## 這個技能做不到的事（先說清楚，避免誤用）
-- **無法保證「每次新對話都自動執行」**。技能是依照使用者訊息內容、由模型自行判斷是否觸發，不是系統層級的強制 hook。如果你在 **Claude Code** 裡使用，想要更強的保證，可以搭配文末「選用：Claude Code SessionStart Hook」。
+- **無法保證「每次新對話都自動執行」**。技能是依照使用者訊息內容、由模型自行判斷是否觸發，不是系統層級的強制 hook。想要更強的保證，可以搭配文末「選用：SessionStart Hook / 全域 instructions」——**Claude Code** 用 SessionStart hook；**opencode** 用全域 `instructions` 設定注入強制規則。
 - **無法讀取需要登入的頁面**（私有文件、付費 changelog）。
 - **搜尋結果只是摘要片段，不是完整頁面**——所以查完一定要接著讀完整頁面內容再下結論，不要只憑搜尋摘要判斷版本或變更細節。
 
@@ -89,12 +89,12 @@ Preflight Report 是提醒，不是關卡。查完就直接接續原本要做的
 ## 可調整的預設值
 這是文字型技能，不是腳本；門檻直接在對話裡調整：
 - 版本落後幾個 minor 才建議升級：預設 2
-- 每個工具查每個工具查幾個來源：預設 2-3
+- 每個工具查幾個來源：預設 2-3
 - 跳過：ls、cat、grep、curl、git core 指令、python/node/npm 本身
 
 ---
 
-## 選用：Claude Code SessionStart Hook（更強的提醒，但不是強制執行）
+## 選用 A：Claude Code SessionStart Hook（更強的提醒，但不是強制執行）
 在 `.claude/settings.json` 或 `~/.claude/settings.json` 加 `SessionStart` hook，每次新對話注入提醒文字（hook 無法保證真的執行成功）：
 
 ```json
@@ -115,3 +115,20 @@ Preflight Report 是提醒，不是關卡。查完就直接接續原本要做的
 ```
 
 SessionStart hook 每次 session 啟動都會跑，指令要盡量快。
+
+## 選用 B：opencode 全域 instructions（把本技能設為強制）
+opencode 沒有 SessionStart hook，但支援全域 `instructions`——列在其中的檔案內容會**永遠注入系統提示**，是最接近「強制執行」的機制：
+
+1. 把本技能裝到全域：`~/.config/opencode/skills/preflight-check/SKILL.md`
+2. 建立規則檔（如 `~/.config/opencode/instructions/skills-mandatory.md`），寫入 MUST 級規則：
+   - 任務涉及套件/框架/雲端服務/CLI 工具時，MUST 先跑 preflight-check 產出 Preflight Report
+   - 出現 model provider 失敗類錯誤時，MUST 依 model-retry-handler 的重試策略處理
+3. 在 `~/.config/opencode/opencode.jsonc` 註冊：
+   ```jsonc
+   {
+     "$schema": "https://opencode.ai/config.json",
+     "instructions": ["~/.config/opencode/instructions/skills-mandatory.md"]
+   }
+   ```
+
+改完設定後需重啟 opencode 才會生效。
